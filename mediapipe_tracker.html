@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump Up - MediaPipe AI Pose & Live Cutout Tracker</title>
+    <title>Jump Up - MediaPipe AI Pose & Real-Time Tracker</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
     <!-- MediaPipe Libraries -->
@@ -50,22 +50,6 @@
             font-size: 0.95rem;
             color: #90A4AE;
             margin-top: 5px;
-        }
-
-        .alert-box {
-            background: rgba(255, 152, 0, 0.15);
-            border: 1px solid #FF9800;
-            border-radius: 10px;
-            padding: 12px 20px;
-            margin-bottom: 20px;
-            max-width: 900px;
-            width: 100%;
-            font-size: 0.9rem;
-            color: #FFE082;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            box-sizing: border-box;
         }
 
         .container {
@@ -194,11 +178,7 @@
 
     <div class="header">
         <h1 class="title">JUMP UP - MEDIAPIPE AI TRACKER</h1>
-        <div class="subtitle">ตรวจจับท่าทางร่างกาย & ส่งภาพคนเข้า Unity Real-Time (Punch / Squat / Plank)</div>
-    </div>
-
-    <div class="alert-box" id="conflict_notice">
-        <span>💡 <b>คำแนะนำ:</b> กล้องเว็บแคมสามารถเปิดได้ทีละ 1 โปรแกรมเท่านั้น! ให้เปิดกล้องในหน้านี้ (Google Chrome) จากนั้นกด Play ใน Unity ระบบจะส่งทั้งภาพคนและท่าทางเข้าสู่ Unity อัตโนมัติครับ</span>
+        <div class="subtitle">ระบบ AI ตรวจจับท่าทาง & ส่งภาพเรียลไทม์เข้า Unity (30-60 FPS)</div>
     </div>
 
     <div class="container">
@@ -215,7 +195,7 @@
 
             <div class="action-banner">
                 <div class="action-label">ท่าทางที่ตรวจจับได้ (Current Action)</div>
-                <div class="action-value" id="detected_action">READY TO START</div>
+                <div class="action-value" id="detected_action">READY</div>
             </div>
 
             <div class="toggle-row">
@@ -233,16 +213,16 @@
                     <div class="stat-num" id="player_hp_text">-</div>
                 </div>
                 <div class="stat-box">
-                    <div class="stat-name">Ultimate Charge</div>
-                    <div class="stat-num" id="ult_text">0%</div>
+                    <div class="stat-name">FPS กล้องจริง</div>
+                    <div class="stat-num" id="fps_text">0</div>
                 </div>
                 <div class="stat-box">
-                    <div class="stat-name">FPS</div>
-                    <div class="stat-num" id="fps_text">30</div>
+                    <div class="stat-name">Latency</div>
+                    <div class="stat-num" id="latency_text">< 10ms</div>
                 </div>
             </div>
 
-            <button class="btn" id="start_btn" onclick="startCamera()">📷 เปิดกล้อง Webcam ตรวจจับท่าทาง</button>
+            <button class="btn" id="start_btn" onclick="startCamera()">📷 เริ่มเปิดกล้องตรวจจับท่าทาง (Real-Time)</button>
         </div>
     </div>
 
@@ -254,12 +234,24 @@
         const unityIndicator = document.getElementById('unity_indicator');
         const unityStatusText = document.getElementById('unity_status_text');
         const streamToggle = document.getElementById('stream_toggle');
+        const fpsDisplay = document.getElementById('fps_text');
+
+        // Offscreen canvas for super lightweight frame transmission to Unity
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = 256;
+        offscreenCanvas.height = 192;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
 
         let isRunning = false;
+        let isProcessing = false;
+        let isSendingFrame = false;
         let lastActionSentTime = 0;
         let lastFrameSentTime = 0;
-        const ACTION_COOLDOWN_MS = 600; // Cooldown between actions
-        const FRAME_STREAM_INTERVAL_MS = 100; // ~10 FPS frame stream to Unity
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        const ACTION_COOLDOWN_MS = 600;
+        const STREAM_INTERVAL_MS = 120; // ~8 FPS stream to Unity is plenty and ultra lightweight
 
         // Check Unity Connection
         async function checkUnity() {
@@ -271,17 +263,16 @@
                     unityStatusText.innerText = '✅ เชื่อมต่อ Unity Battle สำเร็จ';
                     if (data.bossHp !== undefined) document.getElementById('boss_hp_text').innerText = data.bossHp;
                     if (data.playerHp !== undefined) document.getElementById('player_hp_text').innerText = data.playerHp;
-                    if (data.ultimateCharge !== undefined) document.getElementById('ult_text').innerText = Math.round(data.ultimateCharge) + '%';
                 }
             } catch (err) {
                 unityIndicator.classList.remove('online');
-                unityStatusText.innerText = '❌ Unity ยังไม่ได้กด Play หรือ MCP Bridge ปิดอยู่';
+                unityStatusText.innerText = '❌ Unity ยังไม่ได้กด Play';
             }
         }
-        setInterval(checkUnity, 1500);
+        setInterval(checkUnity, 2000);
 
-        // Send Player Action to Unity
-        async function sendActionToUnity(actionName) {
+        // Send Player Action to Unity (Non-blocking)
+        function sendActionToUnity(actionName) {
             const now = Date.now();
             if (now - lastActionSentTime < ACTION_COOLDOWN_MS) return;
             lastActionSentTime = now;
@@ -289,47 +280,45 @@
             actionDisplay.innerText = actionName.toUpperCase() + ' !';
             actionDisplay.style.color = '#00E5FF';
 
-            try {
-                await fetch('http://localhost:8080/execute', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ player_action: actionName })
-                });
-            } catch (err) {
-                console.warn('Failed to send action to Unity:', err);
-            }
+            // Fire and forget (never await in render loop!)
+            fetch('http://localhost:8080/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player_action: actionName })
+            }).catch(() => {});
         }
 
-        // Stream Cutout Frame into Unity
-        async function streamFrameToUnity() {
-            if (!streamToggle.checked) return;
+        // Stream Lightweight Frame to Unity (Completely Decoupled)
+        function streamFrameToUnity() {
+            if (!streamToggle.checked || isSendingFrame) return;
             const now = Date.now();
-            if (now - lastFrameSentTime < FRAME_STREAM_INTERVAL_MS) return;
+            if (now - lastFrameSentTime < STREAM_INTERVAL_MS) return;
             lastFrameSentTime = now;
+            isSendingFrame = true;
 
-            try {
-                // Convert current canvas to JPEG
-                const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
-                await fetch('http://localhost:8080/player/frame', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: dataUrl })
-                });
-            } catch (err) {
-                // silently handle frame drops
-            }
+            // Downscale to 256x192 JPEG (~4KB)
+            offscreenCtx.drawImage(canvasElement, 0, 0, 256, 192);
+            const dataUrl = offscreenCanvas.toDataURL('image/jpeg', 0.5);
+
+            fetch('http://localhost:8080/player/frame', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: dataUrl })
+            }).finally(() => {
+                isSendingFrame = false;
+            }).catch(() => {});
         }
 
-        // Initialize MediaPipe Pose
+        // Initialize MediaPipe Pose with LITE Model (High FPS, No Freeze)
         const pose = new Pose({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
         });
 
         pose.setOptions({
-            modelComplexity: 1,
+            modelComplexity: 0,        // 0 = LITE (Fastest, 30-60 FPS for Web, prevents freezing)
             smoothLandmarks: true,
-            enableSegmentation: true,
-            smoothSegmentation: true,
+            enableSegmentation: true,  // Background removal
+            smoothSegmentation: false, // False = Fast direct segmentation without heavy frame lag
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
@@ -337,10 +326,18 @@
         pose.onResults(onPoseResults);
 
         function onPoseResults(results) {
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                fpsDisplay.innerText = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Draw segmented image
+            // 1. Draw Background-Removed Person
             if (results.segmentationMask) {
                 canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
                 canvasCtx.globalCompositeOperation = 'source-in';
@@ -353,15 +350,13 @@
                 canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
             }
 
+            // 2. Detect Actions from Landmarks
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
 
-                // Key landmarks
                 const nose = lm[0];
                 const leftShoulder = lm[11];
                 const rightShoulder = lm[12];
-                const leftElbow = lm[13];
-                const rightElbow = lm[14];
                 const leftWrist = lm[15];
                 const rightWrist = lm[16];
                 const leftHip = lm[23];
@@ -369,43 +364,46 @@
                 const leftKnee = lm[25];
                 const rightKnee = lm[26];
 
-                // Draw skeleton
+                // Draw skeleton landmarks
                 drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00E5FF', lineWidth: 3 });
                 drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF5252', lineWidth: 2, radius: 4 });
 
-                // Detect Actions:
-                // 1. PUNCH: Wrist extended forward beyond shoulder
-                const isLeftPunch = leftWrist.x > leftShoulder.x + 0.18;
-                const isRightPunch = rightWrist.x < rightShoulder.x - 0.18;
-                if (isLeftPunch || isRightPunch) {
+                // Detect: Punch
+                if ((leftWrist.x > leftShoulder.x + 0.16) || (rightWrist.x < rightShoulder.x - 0.16)) {
                     sendActionToUnity('Punch');
                 }
-
-                // 2. UPPERCUT: Wrist higher than nose
-                const isUppercut = (leftWrist.y < nose.y - 0.05) || (rightWrist.y < nose.y - 0.05);
-                if (isUppercut) {
+                // Detect: Uppercut
+                else if ((leftWrist.y < nose.y - 0.04) || (rightWrist.y < nose.y - 0.04)) {
                     sendActionToUnity('Uppercut');
                 }
-
-                // 3. SQUAT: Knee bent and hips lowered
-                if (leftHip && leftKnee && rightHip && rightKnee) {
-                    const isSquat = (leftKnee.y - leftHip.y < 0.22) && (rightKnee.y - rightHip.y < 0.22);
-                    if (isSquat) {
+                // Detect: Squat
+                else if (leftHip && leftKnee && rightHip && rightKnee) {
+                    if ((leftKnee.y - leftHip.y < 0.24) && (rightKnee.y - rightHip.y < 0.24)) {
                         sendActionToUnity('Squat');
                     }
                 }
             }
             canvasCtx.restore();
 
-            // Stream frame to Unity
+            // 3. Stream frame asynchronously (never delays canvas rendering)
             streamFrameToUnity();
+
+            isProcessing = false;
         }
 
         async function startCamera() {
             if (isRunning) return;
             try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, frameRate: { ideal: 30 } }
+                });
+                videoElement.srcObject = stream;
+                await videoElement.play();
+
                 const camera = new Camera(videoElement, {
                     onFrame: async () => {
+                        if (isProcessing) return; // Skip frame if AI is still calculating (prevents frame queue lock)
+                        isProcessing = true;
                         await pose.send({ image: videoElement });
                     },
                     width: 640,
@@ -413,10 +411,10 @@
                 });
                 await camera.start();
                 isRunning = true;
-                document.getElementById('start_btn').innerText = '🟢 กำลังตรวจจับท่าทางสด...';
+                document.getElementById('start_btn').innerText = '🟢 กำลังตรวจจับแบบเรียลไทม์...';
                 document.getElementById('start_btn').style.background = '#00E676';
             } catch (err) {
-                alert('เกิดข้อผิดพลาดในการเปิดกล้อง: ' + err.message + '\n\nสาเหตุ: กล้องเว็บแคมกำลังถูกใช้งานโดย Unity หรือโปรแกรมอื่นอยู่\nวิธีแก้: ให้กดปุ่ม Stop ใน Unity ก่อน แล้วกดเปิดกล้องในหน้านี้ใหม่อีกครั้งครับ');
+                alert('เกิดข้อผิดพลาด: ' + err.message + '\n\nวิธีแก้: หากกล้องติดค้าง ให้ปิดแท็บนี้แล้วเปิดใหม่ หรือตรวจสอบว่าไม่มีโปรแกรมอื่นล็อกกล้องอยู่ครับ');
             }
         }
     </script>

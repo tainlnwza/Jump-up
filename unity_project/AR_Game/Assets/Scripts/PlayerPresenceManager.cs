@@ -40,15 +40,15 @@ public class PlayerPresenceManager : MonoBehaviour
     [Range(0f, 3f)] public float auraIntensity = 1.2f;
 
     [Header("Face-Off Combat Arena Staging")]
-    public Vector3 playerArenaPosition = new Vector3(-9.6f, 3.95f, -5.3f);
-    public Vector3 playerArenaRotation = new Vector3(0f, 38f, 0f);
-    public Vector3 playerQuadScale = new Vector3(1.4f, 1.9f, 1.0f);
+    public Vector3 playerArenaPosition = new Vector3(-9.15f, 3.65f, -5.15f);
+    public Vector3 playerArenaRotation = new Vector3(0f, 35f, 0f);
+    public Vector3 playerQuadScale = new Vector3(1.35f, 1.85f, 1.0f);
 
-    public Vector3 bossArenaPosition = new Vector3(-7.8f, 3.06f, -3.2f);
-    public Vector3 bossArenaRotation = new Vector3(0f, 218f, 0f);
+    public Vector3 bossArenaPosition = new Vector3(-8.05f, 3.06f, -3.35f);
+    public Vector3 bossArenaRotation = new Vector3(0f, 215f, 0f);
 
-    public Vector3 cameraFaceOffPosition = new Vector3(-8.8f, 4.35f, -7.5f);
-    public Vector3 cameraFaceOffRotation = new Vector3(12f, 15f, 0f);
+    public Vector3 cameraFaceOffPosition = new Vector3(-8.65f, 4.25f, -8.0f);
+    public Vector3 cameraFaceOffRotation = new Vector3(10f, 8f, 0f);
 
     [Header("Combat VFX & Props")]
     public GameObject energyShield;

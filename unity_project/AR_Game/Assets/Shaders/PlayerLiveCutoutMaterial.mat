@@ -46,10 +46,10 @@ Material:
     - _DiffThreshold: 0.16
     - _HitFlash: 0
     - _HologramEffect: 0
-    - _MirrorX: 1
+    - _MirrorX: 0
     - _Smoothing: 0.1
     - _Threshold: 0.35
-    - _UseBgSub: 1
+    - _UseBgSub: 0
     - _UseMask: 0
     m_Colors:
     - _AuraColor: {r: 0.2, g: 0.7, b: 1, a: 1}
