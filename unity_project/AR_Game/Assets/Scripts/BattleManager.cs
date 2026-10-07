@@ -145,6 +145,7 @@ public class BattleManager : MonoBehaviour
                 break;
         }
 
+        PlayerPresenceManager.Instance?.OnPlayerPerformAction(action);
         UpdateAllUI();
     }
 
@@ -364,6 +365,7 @@ public class BattleManager : MonoBehaviour
         // Direct Hit
         playerCurrentHp = Mathf.Max(0, playerCurrentHp - rawBossDamage);
         CameraShake.Instance?.Shake(0.3f, 0.2f);
+        PlayerPresenceManager.Instance?.OnPlayerDamaged(rawBossDamage);
         uiManager?.ShowCombatFeedback($"💥 HIT BY BOSS! -{rawBossDamage} HP", Color.red);
         FlutterBridge.SendMessage("PLAYER_DAMAGED", "{\"damage\":" + rawBossDamage + ",\"currentHp\":" + playerCurrentHp + "}");
 

@@ -24,6 +24,9 @@ public static class BattleSystemSetup
         // Step 4: Build Canvas UI
         BattleUIManager uiManager = SetupBattleUI();
 
+        // Step 4b: Setup Real-Time Player Presence & Face-Off Staging
+        SetupPlayerPresence();
+
         // Step 5: Wire up references
         BattleManager bm = managerGo.GetComponent<BattleManager>();
         bm.monster = monsterGo.GetComponent<MonsterController>();
@@ -645,6 +648,107 @@ public static class BattleSystemSetup
         rt.pivot = pivot;
         rt.anchoredPosition = anchoredPos;
         rt.sizeDelta = sizeDelta;
+    }
+
+    [MenuItem("Tools/Setup Real-Time Player Face-Off (No BG Webcam)", false, 12)]
+    public static GameObject SetupPlayerPresence()
+    {
+        Debug.Log("<color=#00E5FF><b>[PlayerPresenceSetup]</b> Setting up Real-Time Player Face-Off Staging...</color>");
+
+        GameObject presenceGo = GameObject.Find("PlayerPresence");
+        if (presenceGo == null)
+        {
+            presenceGo = new GameObject("PlayerPresence");
+        }
+
+        // Child 1: Quad for player video cutout
+        Transform quadTrans = presenceGo.transform.Find("PlayerCutoutQuad");
+        GameObject quadGo;
+        if (quadTrans == null)
+        {
+            quadGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quadGo.name = "PlayerCutoutQuad";
+            quadGo.transform.SetParent(presenceGo.transform, false);
+            var col = quadGo.GetComponent<Collider>();
+            if (col != null) Object.DestroyImmediate(col);
+        }
+        else
+        {
+            quadGo = quadTrans.gameObject;
+        }
+
+        // Material for Cutout
+        string matPath = "Assets/Shaders/PlayerLiveCutoutMaterial.mat";
+        Material cutoutMat = AssetDatabase.LoadAssetAtPath<Material>(matPath);
+        if (cutoutMat == null)
+        {
+            Shader shader = Shader.Find("Custom/PlayerLiveCutout");
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+            cutoutMat = new Material(shader);
+            AssetDatabase.CreateAsset(cutoutMat, matPath);
+            AssetDatabase.SaveAssets();
+        }
+
+        MeshRenderer mr = quadGo.GetComponent<MeshRenderer>();
+        if (mr != null) mr.sharedMaterial = cutoutMat;
+
+        // Child 2: Soft ground shadow
+        Transform shadowTrans = presenceGo.transform.Find("GroundShadow");
+        GameObject shadowGo;
+        if (shadowTrans == null)
+        {
+            shadowGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            shadowGo.name = "GroundShadow";
+            shadowGo.transform.SetParent(presenceGo.transform, false);
+            shadowGo.transform.localPosition = new Vector3(0f, -0.95f, 0f);
+            shadowGo.transform.localEulerAngles = new Vector3(90f, 0f, 0f);
+            shadowGo.transform.localScale = new Vector3(1.2f, 0.8f, 1f);
+            var col = shadowGo.GetComponent<Collider>();
+            if (col != null) Object.DestroyImmediate(col);
+        }
+        else
+        {
+            shadowGo = shadowTrans.gameObject;
+        }
+
+        // Child 3: Energy Shield
+        Transform shieldTrans = presenceGo.transform.Find("EnergyShield");
+        GameObject shieldGo;
+        if (shieldTrans == null)
+        {
+            shieldGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            shieldGo.name = "EnergyShield";
+            shieldGo.transform.SetParent(presenceGo.transform, false);
+            shieldGo.transform.localPosition = new Vector3(0f, 0f, 0.25f);
+            shieldGo.transform.localEulerAngles = Vector3.zero;
+            shieldGo.transform.localScale = new Vector3(1.6f, 1.8f, 1f);
+            var col = shieldGo.GetComponent<Collider>();
+            if (col != null) Object.DestroyImmediate(col);
+            shieldGo.SetActive(false);
+        }
+        else
+        {
+            shieldGo = shieldTrans.gameObject;
+        }
+
+        // Attach & configure PlayerPresenceManager
+        PlayerPresenceManager ppm = presenceGo.GetComponent<PlayerPresenceManager>();
+        if (ppm == null) ppm = presenceGo.AddComponent<PlayerPresenceManager>();
+
+        ppm.playerQuadRenderer = mr;
+        ppm.cutoutMaterial = cutoutMat;
+        ppm.groundShadow = shadowGo;
+        ppm.energyShield = shieldGo;
+
+        // Perform staging alignment
+        ppm.AlignFaceOffStaging();
+
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
+            UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene()
+        );
+
+        Debug.Log("<color=#4CAF50><b>[PlayerPresenceSetup]</b> Real-Time Player Face-Off setup complete!</color>");
+        return presenceGo;
     }
 }
 #endif

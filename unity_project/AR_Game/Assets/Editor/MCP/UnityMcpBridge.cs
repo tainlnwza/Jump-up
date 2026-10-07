@@ -471,24 +471,34 @@ public static class UnityMcpBridge
         {
             if (string.IsNullOrEmpty(jsonBody)) return "{\"error\": \"Empty body\"}";
 
-            // Check for play/pause/stop action
-            if (jsonBody.Contains("\"action\":\"play\""))
+            string action = ExtractStringValue(jsonBody, "action");
+
+            if (action.Equals("play", StringComparison.OrdinalIgnoreCase))
             {
                 EditorApplication.isPlaying = true;
                 return "{\"success\": true, \"state\": \"playing\"}";
             }
-            if (jsonBody.Contains("\"action\":\"pause\""))
+            if (action.Equals("pause", StringComparison.OrdinalIgnoreCase))
             {
                 EditorApplication.isPaused = !EditorApplication.isPaused;
                 return $"{{\"success\": true, \"isPaused\": {EditorApplication.isPaused.ToString().ToLower()}}}";
             }
-            if (jsonBody.Contains("\"action\":\"stop\""))
+            if (action.Equals("stop", StringComparison.OrdinalIgnoreCase))
             {
                 EditorApplication.isPlaying = false;
                 return "{\"success\": true, \"state\": \"stopped\"}";
             }
-
-            if (jsonBody.Contains("\"action\":\"move_cube_left\""))
+            if (action.Equals("setup_player_presence", StringComparison.OrdinalIgnoreCase))
+            {
+                BattleSystemSetup.SetupPlayerPresence();
+                return "{\"success\": true, \"message\": \"SetupPlayerPresence executed\"}";
+            }
+            if (action.Equals("refresh", StringComparison.OrdinalIgnoreCase))
+            {
+                AssetDatabase.Refresh();
+                return "{\"success\": true, \"message\": \"AssetDatabase refreshed\"}";
+            }
+            if (action.Equals("move_cube_left", StringComparison.OrdinalIgnoreCase))
             {
                 MoveCubeLeft10();
                 var cube = GameObject.Find("Cube");
