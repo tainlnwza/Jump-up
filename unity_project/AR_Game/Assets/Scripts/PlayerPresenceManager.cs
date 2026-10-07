@@ -9,12 +9,22 @@ using UnityEngine;
 /// </summary>
 public class PlayerPresenceManager : MonoBehaviour
 {
-    public static PlayerPresenceManager Instance { get; private set; }
+    public static PlayerPresenceManager Instance
+    {
+        get
+        {
+            if (_instance == null) _instance = FindObjectOfType<PlayerPresenceManager>();
+            return _instance;
+        }
+        private set { _instance = value; }
+    }
+    private static PlayerPresenceManager _instance;
 
     [Header("Camera & Cutout Setup")]
     public Material cutoutMaterial;
     public MeshRenderer playerQuadRenderer;
-    public bool useWebCamInEditor = true;
+    [Tooltip("If false, releases the physical webcam so Chrome/MediaPipe AI can use it without NotReadableError")]
+    public bool useWebCamInEditor = false;
     public int preferredCamWidth = 1280;
     public int preferredCamHeight = 720;
     public int preferredCamFPS = 30;
@@ -278,6 +288,28 @@ public class PlayerPresenceManager : MonoBehaviour
     {
         if (cutoutMaterial == null) return;
         cutoutMaterial.SetTexture("_MainTex", cameraTexture);
+    }
+
+    private Texture2D streamTexture;
+
+    /// <summary>
+    /// Feed real-time cutout JPEG/PNG bytes directly from Chrome MediaPipe Tracker.
+    /// </summary>
+    public void UpdateFrameFromBytes(byte[] imageBytes)
+    {
+        if (streamTexture == null)
+        {
+            streamTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        }
+        streamTexture.LoadImage(imageBytes);
+
+        if (cutoutMaterial != null)
+        {
+            cutoutMaterial.SetTexture("_MainTex", streamTexture);
+            cutoutMaterial.SetFloat("_UseMask", 0f);
+            cutoutMaterial.SetFloat("_UseBgSub", 0f);
+            cutoutMaterial.SetFloat("_MirrorX", 0f);
+        }
     }
     #endregion
 

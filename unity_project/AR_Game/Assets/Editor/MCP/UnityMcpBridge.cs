@@ -356,6 +356,10 @@ public static class UnityMcpBridge
                     responseJson = HandleGetBattleStatus().Result;
                     break;
 
+                case "/player/frame":
+                    responseJson = HandlePlayerFrame(body).Result;
+                    break;
+
                 case "/refresh":
                     responseJson = HandleRefreshAssets().Result;
                     break;
@@ -538,6 +542,37 @@ public static class UnityMcpBridge
             }
 
             return "{\"error\": \"Unrecognized command\"}";
+        });
+    }
+
+    private static async Task<string> HandlePlayerFrame(string jsonBody)
+    {
+        return await RunOnMainThread(() =>
+        {
+            string base64 = ExtractStringValue(jsonBody, "image");
+            if (string.IsNullOrEmpty(base64)) return "{\"error\": \"No image data\"}";
+
+            if (base64.StartsWith("data:image/"))
+            {
+                int commaIdx = base64.IndexOf(',');
+                if (commaIdx >= 0) base64 = base64.Substring(commaIdx + 1);
+            }
+
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(base64);
+                var ppm = PlayerPresenceManager.Instance;
+                if (ppm != null)
+                {
+                    ppm.UpdateFrameFromBytes(bytes);
+                    return "{\"success\": true}";
+                }
+                return "{\"error\": \"PlayerPresenceManager not found\"}";
+            }
+            catch (Exception ex)
+            {
+                return $"{{\"error\": \"{EscapeJson(ex.Message)}\"}}";
+            }
         });
     }
 

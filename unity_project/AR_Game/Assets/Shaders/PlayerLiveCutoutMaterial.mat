@@ -12,7 +12,9 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
-  m_InvalidKeywords: []
+  m_InvalidKeywords:
+  - _MIRRORX_ON
+  - _USEBGSUB_ON
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -23,6 +25,10 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _BgTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _MainTex:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -36,11 +42,14 @@ Material:
     - _AuraIntensity: 1.2
     - _Brightness: 1.1
     - _Contrast: 1.15
+    - _DiffSmoothing: 0.08
+    - _DiffThreshold: 0.16
     - _HitFlash: 0
     - _HologramEffect: 0
     - _MirrorX: 1
     - _Smoothing: 0.1
     - _Threshold: 0.35
+    - _UseBgSub: 1
     - _UseMask: 0
     m_Colors:
     - _AuraColor: {r: 0.2, g: 0.7, b: 1, a: 1}

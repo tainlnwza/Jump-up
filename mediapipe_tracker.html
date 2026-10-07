@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jump Up - MediaPipe AI Pose & No-BG Cutout Tracker</title>
+    <title>Jump Up - MediaPipe AI Pose & Live Cutout Tracker</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
     <!-- MediaPipe Libraries -->
@@ -50,6 +50,22 @@
             font-size: 0.95rem;
             color: #90A4AE;
             margin-top: 5px;
+        }
+
+        .alert-box {
+            background: rgba(255, 152, 0, 0.15);
+            border: 1px solid #FF9800;
+            border-radius: 10px;
+            padding: 12px 20px;
+            margin-bottom: 20px;
+            max-width: 900px;
+            width: 100%;
+            font-size: 0.9rem;
+            color: #FFE082;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-sizing: border-box;
         }
 
         .container {
@@ -151,6 +167,17 @@
             box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
         }
 
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #CFD8DC;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px 14px;
+            border-radius: 8px;
+        }
+
         .indicator {
             display: inline-block;
             width: 10px;
@@ -167,7 +194,11 @@
 
     <div class="header">
         <h1 class="title">JUMP UP - MEDIAPIPE AI TRACKER</h1>
-        <div class="subtitle">ตรวจจับท่าทางร่างกาย & ส่งคำสั่งเข้า Unity Real-Time (Punch / Squat / Plank)</div>
+        <div class="subtitle">ตรวจจับท่าทางร่างกาย & ส่งภาพคนเข้า Unity Real-Time (Punch / Squat / Plank)</div>
+    </div>
+
+    <div class="alert-box" id="conflict_notice">
+        <span>💡 <b>คำแนะนำ:</b> กล้องเว็บแคมสามารถเปิดได้ทีละ 1 โปรแกรมเท่านั้น! ให้เปิดกล้องในหน้านี้ (Google Chrome) จากนั้นกด Play ใน Unity ระบบจะส่งทั้งภาพคนและท่าทางเข้าสู่ Unity อัตโนมัติครับ</span>
     </div>
 
     <div class="container">
@@ -184,7 +215,12 @@
 
             <div class="action-banner">
                 <div class="action-label">ท่าทางที่ตรวจจับได้ (Current Action)</div>
-                <div class="action-value" id="detected_action">WAITING FOR POSE...</div>
+                <div class="action-value" id="detected_action">READY TO START</div>
+            </div>
+
+            <div class="toggle-row">
+                <span>📡 ส่งภาพวิดีโอสดเข้า Unity</span>
+                <input type="checkbox" id="stream_toggle" checked style="width: 20px; height: 20px; cursor: pointer;">
             </div>
 
             <div class="stat-grid">
@@ -217,11 +253,13 @@
         const actionDisplay = document.getElementById('detected_action');
         const unityIndicator = document.getElementById('unity_indicator');
         const unityStatusText = document.getElementById('unity_status_text');
+        const streamToggle = document.getElementById('stream_toggle');
 
         let isRunning = false;
         let lastActionSentTime = 0;
-        let lastDetectedPose = 'None';
+        let lastFrameSentTime = 0;
         const ACTION_COOLDOWN_MS = 600; // Cooldown between actions
+        const FRAME_STREAM_INTERVAL_MS = 100; // ~10 FPS frame stream to Unity
 
         // Check Unity Connection
         async function checkUnity() {
@@ -262,6 +300,26 @@
             }
         }
 
+        // Stream Cutout Frame into Unity
+        async function streamFrameToUnity() {
+            if (!streamToggle.checked) return;
+            const now = Date.now();
+            if (now - lastFrameSentTime < FRAME_STREAM_INTERVAL_MS) return;
+            lastFrameSentTime = now;
+
+            try {
+                // Convert current canvas to JPEG
+                const dataUrl = canvasElement.toDataURL('image/jpeg', 0.65);
+                await fetch('http://localhost:8080/player/frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: dataUrl })
+                });
+            } catch (err) {
+                // silently handle frame drops
+            }
+        }
+
         // Initialize MediaPipe Pose
         const pose = new Pose({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
@@ -282,13 +340,23 @@
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-            // Draw Webcam Feed
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            // Draw segmented image
+            if (results.segmentationMask) {
+                canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.globalCompositeOperation = 'source-in';
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.globalCompositeOperation = 'destination-over';
+                canvasCtx.fillStyle = '#050811';
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.globalCompositeOperation = 'source-over';
+            } else {
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            }
 
             if (results.poseLandmarks) {
                 const lm = results.poseLandmarks;
 
-                // Landmarks
+                // Key landmarks
                 const nose = lm[0];
                 const leftShoulder = lm[11];
                 const rightShoulder = lm[12];
@@ -301,7 +369,7 @@
                 const leftKnee = lm[25];
                 const rightKnee = lm[26];
 
-                // Draw skeleton landmarks
+                // Draw skeleton
                 drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00E5FF', lineWidth: 3 });
                 drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF5252', lineWidth: 2, radius: 4 });
 
@@ -311,14 +379,12 @@
                 const isRightPunch = rightWrist.x < rightShoulder.x - 0.18;
                 if (isLeftPunch || isRightPunch) {
                     sendActionToUnity('Punch');
-                    return;
                 }
 
-                // 2. UPPERCUT: Wrist significantly higher than nose/shoulder
+                // 2. UPPERCUT: Wrist higher than nose
                 const isUppercut = (leftWrist.y < nose.y - 0.05) || (rightWrist.y < nose.y - 0.05);
                 if (isUppercut) {
                     sendActionToUnity('Uppercut');
-                    return;
                 }
 
                 // 3. SQUAT: Knee bent and hips lowered
@@ -326,26 +392,32 @@
                     const isSquat = (leftKnee.y - leftHip.y < 0.22) && (rightKnee.y - rightHip.y < 0.22);
                     if (isSquat) {
                         sendActionToUnity('Squat');
-                        return;
                     }
                 }
             }
             canvasCtx.restore();
+
+            // Stream frame to Unity
+            streamFrameToUnity();
         }
 
         async function startCamera() {
             if (isRunning) return;
-            const camera = new Camera(videoElement, {
-                onFrame: async () => {
-                    await pose.send({ image: videoElement });
-                },
-                width: 640,
-                height: 480
-            });
-            await camera.start();
-            isRunning = true;
-            document.getElementById('start_btn').innerText = '🟢 กำลังตรวจจับท่าทางสด...';
-            document.getElementById('start_btn').style.background = '#00E676';
+            try {
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await pose.send({ image: videoElement });
+                    },
+                    width: 640,
+                    height: 480
+                });
+                await camera.start();
+                isRunning = true;
+                document.getElementById('start_btn').innerText = '🟢 กำลังตรวจจับท่าทางสด...';
+                document.getElementById('start_btn').style.background = '#00E676';
+            } catch (err) {
+                alert('เกิดข้อผิดพลาดในการเปิดกล้อง: ' + err.message + '\n\nสาเหตุ: กล้องเว็บแคมกำลังถูกใช้งานโดย Unity หรือโปรแกรมอื่นอยู่\nวิธีแก้: ให้กดปุ่ม Stop ใน Unity ก่อน แล้วกดเปิดกล้องในหน้านี้ใหม่อีกครั้งครับ');
+            }
         }
     </script>
 </body>
