@@ -1,0 +1,59 @@
+name: fitness_game_app
+description: Gamified fitness mobile application with AI personalization
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.0
+
+  # Backend & Database
+  supabase_flutter: ^2.0.0
+
+  # Authentication
+  firebase_auth: ^4.15.0
+  firebase_core: ^2.24.0
+  google_sign_in: ^6.1.6
+
+  # AI
+  google_generative_ai: ^0.2.0
+
+  # MediaPipe / ML
+  google_mlkit_pose_detection: ^0.11.0
+  camera: ^0.10.5
+
+  # UI/UX
+  cached_network_image: ^3.3.0
+  flutter_animate: ^4.3.0
+  video_player: ^2.8.0
+
+  # Analytics
+  firebase_analytics: ^10.8.0
+
+  # Utilities
+  intl: ^0.18.1
+  shared_preferences: ^2.2.2
+
+  # Unity Integration (Phase 2)
+  flutter_unity_widget: ^2022.2.0
+
+  # AR Permissions
+  permission_handler: ^11.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  # assets:
+  #   - assets/images/
+  #   - assets/videos/

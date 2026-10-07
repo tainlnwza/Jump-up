@@ -1,0 +1,45 @@
+# Unity gitignore
+**/[Ll]ibrary/
+**/[Tt]emp/
+**/[Oo]bj/
+**/[Bb]uild/
+**/[Bb]uilds/
+**/[Ll]ogs/
+**/[Uu]ser[Ss]ettings/
+**/MemoryCaptures/
+**/Recordings/
+**/AssetStoreTools*
+
+# Visual Studio / VS Code
+**/.vs/
+**/.vscode/
+**/*.csproj
+**/*.unityproj
+**/*.sln
+**/*.slnx
+**/*.suo
+**/*.tmp
+**/*.user
+**/*.userprefs
+**/*.pidb
+**/*.booproj
+**/*.svd
+**/*.pdb
+**/*.mdb
+**/*.opendb
+**/*.VC.db
+
+# OS generated
+**/.DS_Store
+**/Thumbs.db
+**/ehthumbs.db
+**/desktop.ini
+
+# Flutter
+**/fitness_game_app/.dart_tool/
+**/fitness_game_app/.flutter-plugins
+**/fitness_game_app/.flutter-plugins-dependencies
+**/fitness_game_app/.packages
+**/fitness_game_app/build/
+**/fitness_game_app/.idea/
+**/fitness_game_app/*.iml
