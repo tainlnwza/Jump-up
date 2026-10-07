@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jump Up - MediaPipe AI Pose & No-BG Cutout Tracker</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;600;700&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --primary: #00E5FF;
+            --accent: #FF5252;
+            --success: #00E676;
+            --bg-dark: #0A0E1A;
+            --card-bg: rgba(18, 26, 46, 0.85);
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-dark);
+            color: #ffffff;
+            font-family: 'Prompt', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 2px;
+            margin: 0;
+            text-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+        }
+
+        .subtitle {
+            font-size: 0.95rem;
+            color: #90A4AE;
+            margin-top: 5px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .video-card {
+            position: relative;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 12px;
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 640px;
+            height: 480px;
+            overflow: hidden;
+        }
+
+        #webcam {
+            display: none;
+        }
+
+        #output_canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            background: #050811;
+            transform: scaleX(-1); /* Mirror camera */
+        }
+
+        .status-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 380px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .action-banner {
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid var(--primary);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .action-label {
+            font-size: 0.85rem;
+            color: #78909C;
+            text-transform: uppercase;
+        }
+
+        .action-value {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #FFD700;
+            margin-top: 4px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.25);
+            padding: 10px 14px;
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
+        }
+
+        .stat-name { font-size: 0.8rem; color: #90A4AE; }
+        .stat-num { font-size: 1.2rem; font-weight: 600; color: #fff; }
+
+        .btn {
+            background: linear-gradient(135deg, #00B0FF, #00E5FF);
+            color: #000;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 229, 255, 0.4);
+        }
+
+        .indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #FF5252;
+            margin-right: 6px;
+        }
+
+        .indicator.online { background: #00E676; box-shadow: 0 0 8px #00E676; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 class="title">JUMP UP - MEDIAPIPE AI TRACKER</h1>
+        <div class="subtitle">ตรวจจับท่าทางร่างกาย & ส่งคำสั่งเข้า Unity Real-Time (Punch / Squat / Plank)</div>
+    </div>
+
+    <div class="container">
+        <div class="video-card">
+            <video id="webcam" playsinline></video>
+            <canvas id="output_canvas" width="640" height="480"></canvas>
+        </div>
+
+        <div class="status-card">
+            <div>
+                <span class="indicator" id="unity_indicator"></span>
+                <span id="unity_status_text">กำลังเชื่อมต่อ Unity (localhost:8080)...</span>
+            </div>
+
+            <div class="action-banner">
+                <div class="action-label">ท่าทางที่ตรวจจับได้ (Current Action)</div>
+                <div class="action-value" id="detected_action">WAITING FOR POSE...</div>
+            </div>
+
+            <div class="stat-grid">
+                <div class="stat-box">
+                    <div class="stat-name">Boss HP</div>
+                    <div class="stat-num" id="boss_hp_text">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-name">Player HP</div>
+                    <div class="stat-num" id="player_hp_text">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-name">Ultimate Charge</div>
+                    <div class="stat-num" id="ult_text">0%</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-name">FPS</div>
+                    <div class="stat-num" id="fps_text">30</div>
+                </div>
+            </div>
+
+            <button class="btn" id="start_btn" onclick="startCamera()">📷 เปิดกล้อง Webcam ตรวจจับท่าทาง</button>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const actionDisplay = document.getElementById('detected_action');
+        const unityIndicator = document.getElementById('unity_indicator');
+        const unityStatusText = document.getElementById('unity_status_text');
+
+        let isRunning = false;
+        let lastActionSentTime = 0;
+        let lastDetectedPose = 'None';
+        const ACTION_COOLDOWN_MS = 600; // Cooldown between actions
+
+        // Check Unity Connection
+        async function checkUnity() {
+            try {
+                const res = await fetch('http://localhost:8080/battle/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    unityIndicator.classList.add('online');
+                    unityStatusText.innerText = '✅ เชื่อมต่อ Unity Battle สำเร็จ';
+                    if (data.bossHp !== undefined) document.getElementById('boss_hp_text').innerText = data.bossHp;
+                    if (data.playerHp !== undefined) document.getElementById('player_hp_text').innerText = data.playerHp;
+                    if (data.ultimateCharge !== undefined) document.getElementById('ult_text').innerText = Math.round(data.ultimateCharge) + '%';
+                }
+            } catch (err) {
+                unityIndicator.classList.remove('online');
+                unityStatusText.innerText = '❌ Unity ยังไม่ได้กด Play หรือ MCP Bridge ปิดอยู่';
+            }
+        }
+        setInterval(checkUnity, 1500);
+
+        // Send Player Action to Unity
+        async function sendActionToUnity(actionName) {
+            const now = Date.now();
+            if (now - lastActionSentTime < ACTION_COOLDOWN_MS) return;
+            lastActionSentTime = now;
+
+            actionDisplay.innerText = actionName.toUpperCase() + ' !';
+            actionDisplay.style.color = '#00E5FF';
+
+            try {
+                await fetch('http://localhost:8080/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ player_action: actionName })
+                });
+            } catch (err) {
+                console.warn('Failed to send action to Unity:', err);
+            }
+        }
+
+        // Initialize MediaPipe Pose
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        });
+
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: true,
+            smoothSegmentation: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        pose.onResults(onPoseResults);
+
+        function onPoseResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            // Draw Webcam Feed
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.poseLandmarks) {
+                const lm = results.poseLandmarks;
+
+                // Landmarks
+                const nose = lm[0];
+                const leftShoulder = lm[11];
+                const rightShoulder = lm[12];
+                const leftElbow = lm[13];
+                const rightElbow = lm[14];
+                const leftWrist = lm[15];
+                const rightWrist = lm[16];
+                const leftHip = lm[23];
+                const rightHip = lm[24];
+                const leftKnee = lm[25];
+                const rightKnee = lm[26];
+
+                // Draw skeleton landmarks
+                drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: '#00E5FF', lineWidth: 3 });
+                drawLandmarks(canvasCtx, results.poseLandmarks, { color: '#FF5252', lineWidth: 2, radius: 4 });
+
+                // Detect Actions:
+                // 1. PUNCH: Wrist extended forward beyond shoulder
+                const isLeftPunch = leftWrist.x > leftShoulder.x + 0.18;
+                const isRightPunch = rightWrist.x < rightShoulder.x - 0.18;
+                if (isLeftPunch || isRightPunch) {
+                    sendActionToUnity('Punch');
+                    return;
+                }
+
+                // 2. UPPERCUT: Wrist significantly higher than nose/shoulder
+                const isUppercut = (leftWrist.y < nose.y - 0.05) || (rightWrist.y < nose.y - 0.05);
+                if (isUppercut) {
+                    sendActionToUnity('Uppercut');
+                    return;
+                }
+
+                // 3. SQUAT: Knee bent and hips lowered
+                if (leftHip && leftKnee && rightHip && rightKnee) {
+                    const isSquat = (leftKnee.y - leftHip.y < 0.22) && (rightKnee.y - rightHip.y < 0.22);
+                    if (isSquat) {
+                        sendActionToUnity('Squat');
+                        return;
+                    }
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        async function startCamera() {
+            if (isRunning) return;
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await pose.send({ image: videoElement });
+                },
+                width: 640,
+                height: 480
+            });
+            await camera.start();
+            isRunning = true;
+            document.getElementById('start_btn').innerText = '🟢 กำลังตรวจจับท่าทางสด...';
+            document.getElementById('start_btn').style.background = '#00E676';
+        }
+    </script>
+</body>
+</html>

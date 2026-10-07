@@ -53,6 +53,11 @@ public class PlayerPresenceManager : MonoBehaviour
     private Coroutine hitShakeRoutine;
     private Coroutine shieldFadeRoutine;
 
+    [Header("Background Removal Mode")]
+    public bool isCalibrated = false;
+    public bool isHologramMode = false;
+    private Texture2D capturedBackgroundTex;
+
     void Awake()
     {
         if (Instance == null) Instance = this;
@@ -65,6 +70,99 @@ public class PlayerPresenceManager : MonoBehaviour
         SetupMaterialAndWebCam();
         AlignFaceOffStaging();
         UpdateAuraColor(baseAuraColor);
+    }
+
+    void Update()
+    {
+        HandleBackgroundRemovalHotkeys();
+    }
+
+    private void HandleBackgroundRemovalHotkeys()
+    {
+#if ENABLE_INPUT_SYSTEM
+        var kb = UnityEngine.InputSystem.Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.cKey.wasPressedThisFrame) CalibrateRoomBackground();
+            if (kb.hKey.wasPressedThisFrame) ToggleHologramMode();
+            if (kb.kKey.wasPressedThisFrame) AutoKeyRoomWallColor();
+        }
+#elif ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKeyDown(KeyCode.C)) CalibrateRoomBackground();
+        if (Input.GetKeyDown(KeyCode.H)) ToggleHologramMode();
+        if (Input.GetKeyDown(KeyCode.K)) AutoKeyRoomWallColor();
+#endif
+    }
+
+    public void CalibrateRoomBackground()
+    {
+        if (webCamTexture == null || !webCamTexture.isPlaying)
+        {
+            Debug.LogWarning("[PlayerPresence] WebCam is not active for calibration.");
+            return;
+        }
+
+        if (capturedBackgroundTex == null || capturedBackgroundTex.width != webCamTexture.width || capturedBackgroundTex.height != webCamTexture.height)
+        {
+            capturedBackgroundTex = new Texture2D(webCamTexture.width, webCamTexture.height, TextureFormat.RGBA32, false);
+        }
+
+        capturedBackgroundTex.SetPixels(webCamTexture.GetPixels());
+        capturedBackgroundTex.Apply();
+
+        if (cutoutMaterial != null)
+        {
+            cutoutMaterial.SetTexture("_BgTex", capturedBackgroundTex);
+            cutoutMaterial.SetFloat("_UseBgSub", 1f);
+            cutoutMaterial.SetFloat("_UseMask", 0f);
+            cutoutMaterial.SetFloat("_DiffThreshold", 0.16f);
+            cutoutMaterial.SetFloat("_DiffSmoothing", 0.08f);
+        }
+
+        isCalibrated = true;
+        Debug.Log("<color=#00E5FF><b>[PlayerPresence]</b> Room Background Calibrated! Room removed from player feed.</color>");
+    }
+
+    public void ToggleHologramMode()
+    {
+        isHologramMode = !isHologramMode;
+        if (cutoutMaterial != null)
+        {
+            cutoutMaterial.SetFloat("_HologramEffect", isHologramMode ? 1f : 0f);
+        }
+        Debug.Log($"<color=#FF9800>[PlayerPresence] Hologram Mode: {(isHologramMode ? "ON" : "OFF")}</color>");
+    }
+
+    public void AutoKeyRoomWallColor()
+    {
+        if (webCamTexture == null || !webCamTexture.isPlaying) return;
+
+        Color wallColor = webCamTexture.GetPixel(15, webCamTexture.height - 15);
+        if (cutoutMaterial != null)
+        {
+            cutoutMaterial.SetColor("_ChromaColor", wallColor);
+            cutoutMaterial.SetFloat("_UseBgSub", 0f);
+            cutoutMaterial.SetFloat("_UseMask", 0f);
+            cutoutMaterial.SetFloat("_Threshold", 0.28f);
+            cutoutMaterial.SetFloat("_Smoothing", 0.12f);
+        }
+        Debug.Log($"<color=#4CAF50>[PlayerPresence] Auto-keyed room wall color to: {wallColor}</color>");
+    }
+
+    void OnGUI()
+    {
+        if (!Application.isPlaying) return;
+
+        GUILayout.BeginArea(new Rect(20, 20, 360, 130), GUI.skin.box);
+        GUILayout.Label("<b>🎥 Player Cutout Controls (No BG)</b>");
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("📸 [C] Calibrate Room")) CalibrateRoomBackground();
+        if (GUILayout.Button("⚡ [H] Hologram")) ToggleHologramMode();
+        if (GUILayout.Button("🎨 [K] Auto Wall Key")) AutoKeyRoomWallColor();
+        GUILayout.EndHorizontal();
+
+        GUILayout.Label(isCalibrated ? "<color=green>✅ Room Background: REMOVED (Calibrated)</color>" : "<color=yellow>⚠️ Tip: Step aside 1 sec & press [C] to erase background!</color>");
+        GUILayout.EndArea();
     }
 
     void OnDestroy()

@@ -4,17 +4,27 @@ Shader "Custom/PlayerLiveCutout"
     {
         _MainTex ("Player Camera Feed", 2D) = "white" {}
         _MaskTex ("MediaPipe Segmentation Mask", 2D) = "white" {}
-        _UseMask ("Use Segmentation Mask (1=Yes, 0=No)", Float) = 0.0
-        _ChromaColor ("Chroma Key Color", Color) = (0.0, 1.0, 0.0, 1.0)
+        [Toggle] _UseMask ("Use Segmentation Mask (1=Yes, 0=No)", Float) = 0.0
+
+        [Header(Adaptive Room Background Subtraction)]
+        _BgTex ("Captured Room Background", 2D) = "black" {}
+        [Toggle] _UseBgSub ("Use Room Difference Subtraction", Float) = 0.0
+        _DiffThreshold ("Room Difference Threshold", Range(0.01, 0.8)) = 0.15
+        _DiffSmoothing ("Difference Smoothing", Range(0.001, 0.3)) = 0.08
+
+        [Header(Chroma Key)]
+        _ChromaColor ("Chroma Key Color", Color) = (0.1, 0.8, 0.2, 1.0)
         _Threshold ("Chroma Threshold", Range(0.0, 1.0)) = 0.35
         _Smoothing ("Chroma Smoothing", Range(0.001, 0.5)) = 0.1
+
+        [Header(Combat Visuals)]
         _AuraColor ("Combat Aura Color", Color) = (0.2, 0.7, 1.0, 1.0)
         _AuraIntensity ("Aura Intensity", Range(0.0, 3.0)) = 1.0
-        _MirrorX ("Mirror Horizontally (1=Yes, 0=No)", Float) = 1.0
+        [Toggle] _MirrorX ("Mirror Horizontally (1=Yes, 0=No)", Float) = 1.0
         _Brightness ("Brightness", Range(0.5, 2.0)) = 1.1
         _Contrast ("Contrast", Range(0.5, 2.0)) = 1.15
         _HitFlash ("Hit Flash Intensity", Range(0.0, 1.0)) = 0.0
-        _HologramEffect ("Hologram Effect (1=Yes, 0=No)", Float) = 0.0
+        [Toggle] _HologramEffect ("Hologram Effect (1=Yes, 0=No)", Float) = 0.0
     }
 
     SubShader
@@ -57,6 +67,8 @@ Shader "Custom/PlayerLiveCutout"
             SAMPLER(sampler_MainTex);
             TEXTURE2D(_MaskTex);
             SAMPLER(sampler_MaskTex);
+            TEXTURE2D(_BgTex);
+            SAMPLER(sampler_BgTex);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _MainTex_ST;
@@ -66,6 +78,9 @@ Shader "Custom/PlayerLiveCutout"
                 float _Smoothing;
                 float _AuraIntensity;
                 float _UseMask;
+                float _UseBgSub;
+                float _DiffThreshold;
+                float _DiffSmoothing;
                 float _MirrorX;
                 float _Brightness;
                 float _Contrast;
@@ -99,13 +114,20 @@ Shader "Custom/PlayerLiveCutout"
 
                 if (_UseMask > 0.5)
                 {
-                    // MediaPipe Segmentation: 1 = Human, 0 = Background
+                    // MediaPipe Neural Mask: 1 = Human, 0 = Background
                     half maskVal = SAMPLE_TEXTURE2D(_MaskTex, sampler_MaskTex, uv).r;
                     alpha = smoothstep(0.2, 0.8, maskVal);
                 }
+                else if (_UseBgSub > 0.5)
+                {
+                    // Room Background Subtraction
+                    half3 bgCol = SAMPLE_TEXTURE2D(_BgTex, sampler_BgTex, uv).rgb;
+                    float diff = distance(col.rgb, bgCol);
+                    alpha = smoothstep(_DiffThreshold, _DiffThreshold + _DiffSmoothing, diff);
+                }
                 else
                 {
-                    // Real-time chroma key cutout
+                    // Chroma key cutout
                     float dist = distance(col.rgb, _ChromaColor.rgb);
                     alpha = smoothstep(_Threshold, _Threshold + _Smoothing, dist);
                 }
@@ -114,14 +136,14 @@ Shader "Custom/PlayerLiveCutout"
                 if (_HologramEffect > 0.5)
                 {
                     float scanline = sin(input.uv.y * 120.0 + _Time.y * 8.0) * 0.15 + 0.85;
-                    col.rgb = lerp(col.rgb, _AuraColor.rgb * 1.2, 0.35) * scanline;
+                    col.rgb = lerp(col.rgb, _AuraColor.rgb * 1.3, 0.4) * scanline;
                 }
 
                 // Combat edge aura
                 float auraEdge = (1.0 - alpha) * step(0.01, alpha);
                 col.rgb = lerp(col.rgb, _AuraColor.rgb * _AuraIntensity * 1.5, auraEdge * 0.75);
 
-                // Hit flash feedback (Damage taken)
+                // Hit flash feedback
                 if (_HitFlash > 0.01)
                 {
                     col.rgb = lerp(col.rgb, float3(1.0, 0.15, 0.15), _HitFlash);
@@ -153,6 +175,7 @@ Shader "Custom/PlayerLiveCutout"
 
             sampler2D _MainTex;
             sampler2D _MaskTex;
+            sampler2D _BgTex;
             float4 _MainTex_ST;
             float4 _ChromaColor;
             float4 _AuraColor;
@@ -160,6 +183,9 @@ Shader "Custom/PlayerLiveCutout"
             float _Smoothing;
             float _AuraIntensity;
             float _UseMask;
+            float _UseBgSub;
+            float _DiffThreshold;
+            float _DiffSmoothing;
             float _MirrorX;
             float _Brightness;
             float _Contrast;
@@ -186,6 +212,12 @@ Shader "Custom/PlayerLiveCutout"
                 {
                     alpha = tex2D(_MaskTex, i.uv).r;
                 }
+                else if (_UseBgSub > 0.5)
+                {
+                    fixed3 bgCol = tex2D(_BgTex, i.uv).rgb;
+                    float diff = distance(col.rgb, bgCol);
+                    alpha = smoothstep(_DiffThreshold, _DiffThreshold + _DiffSmoothing, diff);
+                }
                 else
                 {
                     float dist = distance(col.rgb, _ChromaColor.rgb);
@@ -195,7 +227,7 @@ Shader "Custom/PlayerLiveCutout"
                 if (_HologramEffect > 0.5)
                 {
                     float scanline = sin(i.uv.y * 120.0 + _Time.y * 8.0) * 0.15 + 0.85;
-                    col.rgb = lerp(col.rgb, _AuraColor.rgb * 1.2, 0.35) * scanline;
+                    col.rgb = lerp(col.rgb, _AuraColor.rgb * 1.3, 0.4) * scanline;
                 }
 
                 float auraEdge = (1.0 - alpha) * step(0.01, alpha);
