@@ -1,16 +1,14 @@
-// Unity C# Script: MonsterController.cs
-// Location: unity_project/Assets/Scripts/MonsterController.cs
-
 using UnityEngine;
 
 public class MonsterController : MonoBehaviour
 {
     [Header("Components")]
     private Animator animator;
+    private AudioSource audioSource;
 
     [Header("Stats")]
-    public int maxHealth = 200;
-    public int currentHealth;
+    public int maxHealth = 10000;
+    public int currentHealth = 6450;
     public bool isDead = false;
     public bool isStaggered = false;
 
@@ -24,21 +22,25 @@ public class MonsterController : MonoBehaviour
     public AudioClip hitSound;
     public AudioClip criticalHitSound;
     public AudioClip deathSound;
-    private AudioSource audioSource;
 
     void Start()
     {
         animator = GetComponent<Animator>();
         audioSource = GetComponent<AudioSource>();
-        currentHealth = maxHealth;
 
-        // Notify Flutter that Unity is ready
+        if (BattleManager.Instance != null)
+        {
+            maxHealth = BattleManager.Instance.bossMaxHp;
+            currentHealth = BattleManager.Instance.bossCurrentHp;
+        }
+
+        UpdateHpBlendTree();
         SendMessageToFlutter("UNITY_READY", "{}");
     }
 
     void Update()
     {
-        // Always face camera
+        // Smoothly face the main camera
         if (Camera.main != null)
         {
             Vector3 lookDirection = Camera.main.transform.position - transform.position;
@@ -54,21 +56,21 @@ public class MonsterController : MonoBehaviour
         }
     }
 
-    // Called from Flutter via FlutterBridge
+    // Called when taking damage (from BattleManager or Flutter)
     public void TakeDamage(int damage, bool isCritical = false)
     {
         if (isDead) return;
 
-        currentHealth -= damage;
-        currentHealth = Mathf.Max(0, currentHealth);
+        currentHealth = Mathf.Max(0, currentHealth - damage);
+        UpdateHpBlendTree();
 
-        // Play hit animation
-        if (!isStaggered)
+        // Play hit animation if not staggered
+        if (!isStaggered && animator != null)
         {
             animator.SetTrigger("Hit");
         }
 
-        // Spawn VFX at hit position
+        // Spawn hit VFX
         Vector3 hitPosition = transform.position + Vector3.up * 1.5f + Random.insideUnitSphere * 0.3f;
         GameObject effect = isCritical ? criticalHitEffectPrefab : hitEffectPrefab;
         if (effect != null)
@@ -77,7 +79,7 @@ public class MonsterController : MonoBehaviour
             Destroy(vfx, 2f);
         }
 
-        // Spawn damage number
+        // Spawn floating damage number
         if (damageNumberPrefab != null)
         {
             GameObject dmgNum = Instantiate(damageNumberPrefab, hitPosition, Quaternion.identity);
@@ -95,80 +97,76 @@ public class MonsterController : MonoBehaviour
             audioSource.PlayOneShot(isCritical ? criticalHitSound : hitSound);
         }
 
-        // Screen shake for critical hits
-        if (isCritical)
-        {
-            CameraShake.Instance?.Shake(0.2f, 0.1f);
-        }
-
-        // Check for stagger (25% health)
-        if (currentHealth <= maxHealth * 0.25f && !isStaggered && !isDead)
-        {
-            EnterStagger();
-        }
-
-        // Check for death
-        if (currentHealth <= 0)
-        {
-            Die();
-        }
-
         // Notify Flutter
         string json = $"{{\"damage\":{damage},\"currentHp\":{currentHealth},\"isCritical\":{isCritical.ToString().ToLower()}}}";
         SendMessageToFlutter("DAMAGE_DEALT", json);
     }
 
+    private void UpdateHpBlendTree()
+    {
+        if (animator != null && maxHealth > 0)
+        {
+            float ratio = (float)currentHealth / maxHealth;
+            animator.SetFloat("HpPercent", ratio);
+        }
+    }
+
     public void PlayAttackAnimation()
     {
         if (isDead || isStaggered) return;
-        animator.SetTrigger("Attack");
+        if (animator != null)
+        {
+            animator.SetTrigger("Attack");
+        }
         SendMessageToFlutter("ANIMATION_STARTED", "{\"animation\":\"attack\"}");
     }
 
-    void EnterStagger()
+    public void EnterStaggerFromBattleManager()
     {
+        if (isDead) return;
         isStaggered = true;
-        animator.SetTrigger("Stagger");
-        SendMessageToFlutter("MONSTER_STAGGERED", "{}");
-
-        // Auto-recover after 10 seconds
-        Invoke("ExitStagger", 10f);
+        if (animator != null)
+        {
+            animator.SetTrigger("Stagger");
+        }
     }
 
-    void ExitStagger()
+    public void ExitStaggerFromBattleManager()
     {
         if (isDead) return;
         isStaggered = false;
-        animator.SetTrigger("StaggerEnd");
-        SendMessageToFlutter("MONSTER_RECOVERED", "{}");
+        if (animator != null)
+        {
+            animator.SetTrigger("StaggerEnd");
+        }
     }
 
-    void Die()
+    public void DieFromBattleManager()
     {
+        if (isDead) return;
         isDead = true;
-        animator.SetTrigger("Death");
 
-        // Spawn death effect
+        if (animator != null)
+        {
+            animator.SetTrigger("Death");
+        }
+
         if (deathEffectPrefab != null)
         {
             GameObject deathVfx = Instantiate(deathEffectPrefab, transform.position, Quaternion.identity);
             Destroy(deathVfx, 5f);
         }
 
-        // Play death sound
         if (audioSource != null && deathSound != null)
         {
             audioSource.PlayOneShot(deathSound);
         }
 
-        // Slow motion effect
+        // Slow motion finish
         Time.timeScale = 0.3f;
-        Invoke("ResetTimeScale", 0.5f);
+        Invoke(nameof(ResetTimeScale), 0.6f);
 
         SendMessageToFlutter("MONSTER_DEFEATED", "{}");
-
-        // Destroy after animation (3 seconds)
-        Destroy(gameObject, 3.5f);
     }
 
     void ResetTimeScale()
@@ -181,10 +179,10 @@ public class MonsterController : MonoBehaviour
         FlutterBridge.SendMessage(messageType, data);
     }
 
-    // Animation Events (called from animation timeline)
+    // Animation Event callbacks
     public void OnAttackHit()
     {
-        SendMessageToFlutter("ATTACK_HIT", "");
+        SendMessageToFlutter("ATTACK_HIT", "{}");
     }
 
     public void OnAttackComplete()

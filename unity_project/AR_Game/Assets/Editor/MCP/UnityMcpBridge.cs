@@ -352,6 +352,10 @@ public static class UnityMcpBridge
                     responseJson = HandleSaveScene().Result;
                     break;
 
+                case "/battle/status":
+                    responseJson = HandleGetBattleStatus().Result;
+                    break;
+
                 case "/refresh":
                     responseJson = HandleRefreshAssets().Result;
                     break;
@@ -505,6 +509,21 @@ public static class UnityMcpBridge
                 {
                     bool executed = EditorApplication.ExecuteMenuItem(menuPath);
                     return $"{{\"success\": {executed.ToString().ToLower()}, \"menu\": \"{EscapeJson(menuPath)}\"}}";
+                }
+            }
+
+            if (jsonBody.Contains("\"player_action\":"))
+            {
+                string act = ExtractStringValue(jsonBody, "player_action");
+                if (System.Enum.TryParse<PlayerActionType>(act, true, out var actionType))
+                {
+                    BattleManager.Instance?.ExecuteAction(actionType);
+                    var bm = BattleManager.Instance;
+                    if (bm != null)
+                    {
+                        return $"{{\"success\": true, \"action\": \"{actionType}\", \"bossHp\": {bm.bossCurrentHp}, \"playerHp\": {bm.playerCurrentHp}, \"ult\": {bm.ultimateCharge}, \"exp\": {bm.playerExp}}}";
+                    }
+                    return "{\"error\": \"BattleManager not active\"}";
                 }
             }
 
@@ -673,6 +692,30 @@ public static class UnityMcpBridge
             Scene activeScene = SceneManager.GetActiveScene();
             bool saved = UnityEditor.SceneManagement.EditorSceneManager.SaveScene(activeScene);
             return $"{{\"success\": {saved.ToString().ToLower()}, \"scene\": \"{EscapeJson(activeScene.name)}\"}}";
+        });
+    }
+
+    private static async Task<string> HandleGetBattleStatus()
+    {
+        return await RunOnMainThread(() =>
+        {
+            var bm = BattleManager.Instance;
+            if (bm == null) return "{\"error\": \"BattleManager not active\"}";
+            return $@"{{
+  ""bossName"": ""{EscapeJson(bm.bossName)}"",
+  ""bossHp"": {bm.bossCurrentHp},
+  ""bossMaxHp"": {bm.bossMaxHp},
+  ""isBossDown"": {bm.isBossDown.ToString().ToLower()},
+  ""isBossDead"": {bm.isBossDead.ToString().ToLower()},
+  ""playerHp"": {bm.playerCurrentHp},
+  ""playerMaxHp"": {bm.playerMaxHp},
+  ""isDodging"": {bm.isDodging.ToString().ToLower()},
+  ""isDefending"": {bm.isDefending.ToString().ToLower()},
+  ""ultimateCharge"": {bm.ultimateCharge},
+  ""level"": {bm.playerLevel},
+  ""exp"": {bm.playerExp},
+  ""timer"": {bm.battleTimeSeconds}
+}}";
         });
     }
 

@@ -1,6 +1,3 @@
-// Unity C# Script: FlutterBridge.cs
-// Location: unity_project/Assets/Scripts/FlutterBridge.cs
-
 using UnityEngine;
 using System;
 using System.Runtime.InteropServices;
@@ -27,7 +24,8 @@ public class FlutterBridge : MonoBehaviour
     void Start()
     {
         arPlacement = FindObjectOfType<ARPlacementManager>();
-        Debug.Log("[FlutterBridge] Initialized");
+        monster = FindObjectOfType<MonsterController>();
+        Debug.Log("<color=#4CAF50>[FlutterBridge] Initialized.</color>");
     }
 
     // Called from Flutter (message comes as JSON string)
@@ -35,7 +33,7 @@ public class FlutterBridge : MonoBehaviour
     {
         try
         {
-            Debug.Log($"[FlutterBridge] Received: {jsonMessage}");
+            Debug.Log($"[FlutterBridge] Received from Flutter: {jsonMessage}");
             FlutterMessage msg = JsonUtility.FromJson<FlutterMessage>(jsonMessage);
             HandleMessage(msg);
         }
@@ -78,8 +76,6 @@ public class FlutterBridge : MonoBehaviour
     void StartBattle(string data)
     {
         Debug.Log("[FlutterBridge] Starting battle");
-
-        // Find monster (should already be placed via AR)
         monster = FindObjectOfType<MonsterController>();
 
         if (monster != null)
@@ -88,44 +84,47 @@ public class FlutterBridge : MonoBehaviour
         }
         else
         {
-            Debug.LogError("[FlutterBridge] Monster not found!");
+            Debug.LogWarning("[FlutterBridge] Monster not found in scene yet!");
             SendMessage("BATTLE_ERROR", "{\"error\":\"Monster not found\"}");
         }
     }
 
     void HandlePlayerAction(string data)
     {
-        if (monster == null)
-        {
-            Debug.LogWarning("[FlutterBridge] No monster to attack");
-            return;
-        }
-
         try
         {
             PlayerAction action = JsonUtility.FromJson<PlayerAction>(data);
-            Debug.Log($"[FlutterBridge] Player action: {action.action}, damage: {action.damage}");
+            Debug.Log($"[FlutterBridge] MediaPipe / Flutter Player Action: {action.action}");
 
-            switch (action.action)
+            string act = action.action.ToUpper();
+            if (act == "PUNCH")
             {
-                case "PUNCH":
-                    monster.TakeDamage(action.damage, false);
-                    break;
-
-                case "UPPERCUT":
-                    monster.TakeDamage(action.damage, true); // critical hit
-                    break;
-
-                case "SQUAT":
-                case "PLANK":
-                case "HIGH_KNEE":
-                    // Defensive actions handled by Flutter
-                    Debug.Log($"[FlutterBridge] Defensive action: {action.action}");
-                    break;
-
-                default:
-                    Debug.LogWarning($"[FlutterBridge] Unknown action: {action.action}");
-                    break;
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.Punch);
+            }
+            else if (act == "UPPERCUT")
+            {
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.Uppercut);
+            }
+            else if (act == "SQUAT")
+            {
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.Squat);
+            }
+            else if (act == "PLANK")
+            {
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.Plank);
+            }
+            else if (act == "HIGH_KNEE" || act == "HIGHKNEE")
+            {
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.HighKnee);
+            }
+            else if (act == "ULTIMATE")
+            {
+                BattleManager.Instance?.ExecuteAction(PlayerActionType.Ultimate);
+            }
+            else
+            {
+                // Fallback direct damage
+                monster?.TakeDamage(action.damage, false);
             }
         }
         catch (Exception e)
@@ -136,104 +135,69 @@ public class FlutterBridge : MonoBehaviour
 
     void BossAttack()
     {
-        if (monster != null && !monster.isDead)
+        if (monster != null)
         {
             monster.PlayAttackAnimation();
-            Debug.Log("[FlutterBridge] Boss attacking");
         }
     }
 
     void EndBattle(string data)
     {
-        Debug.Log("[FlutterBridge] Battle ended");
-
-        if (monster != null)
-        {
-            Destroy(monster.gameObject);
-            monster = null;
-        }
-
-        SendMessage("BATTLE_ENDED", "{}");
+        Debug.Log($"[FlutterBridge] Battle ended: {data}");
     }
 
     void ResetGame()
     {
         Debug.Log("[FlutterBridge] Resetting game");
-
-        if (monster != null)
-        {
-            Destroy(monster.gameObject);
-            monster = null;
-        }
-
-        if (arPlacement != null)
-        {
-            arPlacement.ResetPlacement();
-        }
-
-        SendMessage("GAME_RESET", "{}");
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+        );
     }
 
-    // Send message to Flutter
+    // Send message back to Flutter
     public static void SendMessage(string messageType, string data)
     {
-        string json = $"{{\"type\":\"{messageType}\",\"data\":{data}}}";
+        string fullMessage = $"{{\"type\":\"{messageType}\",\"data\":{data}}}";
+        Debug.Log($"[FlutterBridge] Sending to Flutter: {fullMessage}");
 
-        Debug.Log($"[FlutterBridge] Sending to Flutter: {json}");
-
-        #if UNITY_ANDROID && !UNITY_EDITOR
+#if UNITY_ANDROID && !UNITY_EDITOR
         try
         {
-            using (AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-            {
-                using (AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                {
-                    currentActivity.Call("onUnityMessage", json);
-                }
-            }
+            AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+            AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+            activity.Call("onUnityMessage", fullMessage);
         }
         catch (Exception e)
         {
-            Debug.LogError($"[FlutterBridge] Android message failed: {e.Message}");
+            Debug.LogError($"[FlutterBridge] Android send error: {e.Message}");
         }
-        #elif UNITY_IOS && !UNITY_EDITOR
+#elif UNITY_IOS && !UNITY_EDITOR
         try
         {
-            _SendMessageToFlutter(json);
+            NativeAPI.SendMessageToFlutter(fullMessage);
         }
         catch (Exception e)
         {
-            Debug.LogError($"[FlutterBridge] iOS message failed: {e.Message}");
+            Debug.LogError($"[FlutterBridge] iOS send error: {e.Message}");
         }
-        #else
-        // Editor: Log only
-        Debug.Log($"[FlutterBridge → Flutter] {json}");
-        #endif
+#else
+        // In Editor, just log
+        Debug.Log($"[FlutterBridge EDITOR STUB] Message to Flutter: {fullMessage}");
+#endif
     }
 
-    #if UNITY_IOS && !UNITY_EDITOR
-    [DllImport("__Internal")]
-    private static extern void _SendMessageToFlutter(string message);
-    #endif
-}
+    [System.Serializable]
+    public class FlutterMessage
+    {
+        public string type;
+        public string data;
+    }
 
-[Serializable]
-public class FlutterMessage
-{
-    public string type;
-    public string data;
-}
-
-[Serializable]
-public class PlayerAction
-{
-    public string action;
-    public int damage;
-}
-
-[Serializable]
-public class BattleData
-{
-    public string bossId;
-    public int difficulty;
+    [System.Serializable]
+    public class PlayerAction
+    {
+        public string action;
+        public int damage;
+        public float confidence;
+    }
 }
